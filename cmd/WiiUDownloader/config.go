@@ -147,8 +147,26 @@ func (c *Config) Save() error {
 func (c *Config) SetValuesFromConfig(newK *koanf.Koanf) error {
 	c.saveMutex.Lock()
 	defer c.saveMutex.Unlock()
+	// Save system-detected defaults before unmarshaling, since
+	// Unmarshal zeroes missing keys (bool → false, uint8 → 0, etc.).
+	darkModeDefault := c.DarkMode
+	selectedRegionDefault := c.SelectedRegion
+	continueOnErrorDefault := c.ContinueOnError
+	getSizeOnQueueDefault := c.GetSizeOnQueue
 	if err := newK.Unmarshal("", c); err != nil {
 		return err
+	}
+	if !newK.Exists("darkMode") {
+		c.DarkMode = darkModeDefault
+	}
+	if !newK.Exists("selectedRegion") {
+		c.SelectedRegion = selectedRegionDefault
+	}
+	if !newK.Exists("continueOnError") {
+		c.ContinueOnError = continueOnErrorDefault
+	}
+	if !newK.Exists("getSizeOnQueue") {
+		c.GetSizeOnQueue = getSizeOnQueueDefault
 	}
 	if !newK.Exists("suggestRelatedContent") {
 		c.SuggestRelatedContent = true

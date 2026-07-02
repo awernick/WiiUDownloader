@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log"
@@ -35,8 +36,23 @@ const (
 func main() {
 	runtime.LockOSThread()
 	runtime.GOMAXPROCS(runtime.NumCPU())
+
+	config, configErr := loadConfig()
+	if config == nil {
+		config = getDefaultConfig()
+	}
+	if runtime.GOOS == "darwin" {
+		if config.DarkMode {
+			os.Setenv("GTK_THEME", "Adwaita:dark")
+		} else {
+			os.Setenv("GTK_THEME", "Adwaita")
+		}
+	}
+
 	configureMacOSEnvironment()
 	gtk.Init(nil)
+
+	setDarkTheme(config.DarkMode)
 
 	app, err := gtk.ApplicationNew("io.github.xpl0itu.wiiudownloader", glib.APPLICATION_FLAGS_NONE)
 	if err != nil {
@@ -54,22 +70,11 @@ func main() {
 	}
 
 	client := buildHTTPClient()
-	config, err := loadConfig()
-	if err != nil {
-		log.Printf("error loading config: %v", err)
-		errorDialog := gtk.MessageDialogNew(nil, 0, gtk.MESSAGE_WARNING, gtk.BUTTONS_OK, "Error loading config: %v\n\nStarting with default settings.", err)
+	if configErr != nil {
+		log.Printf("error loading config: %v", configErr)
+		errorDialog := gtk.MessageDialogNew(nil, 0, gtk.MESSAGE_WARNING, gtk.BUTTONS_OK, "Error loading config: %v\n\nStarting with default settings.", configErr)
 		errorDialog.Run()
 		errorDialog.Destroy()
-	}
-	if config == nil {
-		config = getDefaultConfig()
-	}
-
-	if settings, err := gtk.SettingsGetDefault(); err != nil {
-		log.Printf("error getting gtk settings: %v", err)
-	} else if settings != nil {
-		settings.SetProperty("gtk-theme-name", "Adwaita")
-		settings.SetProperty("gtk-application-prefer-dark-theme", config.DarkMode)
 	}
 
 	win := NewMainWindow(wiiudownloader.GetTitleEntries(wiiudownloader.TITLE_CATEGORY_GAME), client, config)
@@ -130,52 +135,22 @@ func configureMacOSEnvironment() {
 	loaderDir := filepath.Join(bundlePath, "MacOS", "lib", "gdkpixbuf_loaders")
 	if _, err := os.Stat(loaderDir); err == nil {
 		os.Setenv("GDK_PIXBUF_MODULE_DIR", loaderDir)
-		// Read the cache and rewrite all .so paths to use loaderDir (bundle location)
-		// Then ensure every .so in the dir has a cache entry
-		cacheOrig := filepath.Join(bundlePath, "Resources", "loaders.cache")
-		cacheData, _ := os.ReadFile(cacheOrig)
-		lines := strings.Split(string(cacheData), "\n")
 
-		// Patch existing paths
-		for i, line := range lines {
-			trimmed := strings.TrimSpace(line)
-			if strings.HasPrefix(trimmed, "\"") && strings.HasSuffix(trimmed, ".so\"") {
-				soPath := strings.Trim(trimmed, "\"")
-				soName := filepath.Base(soPath)
-				lines[i] = "\"" + filepath.Join(loaderDir, soName) + "\""
+		if cachePath, ok := bundledLoadersCachePath(bundlePath); ok {
+			cacheData, err := os.ReadFile(cachePath)
+			if err == nil && strings.Contains(string(cacheData), "libpixbufloader_svg") {
+				os.Setenv("GDK_PIXBUF_MODULE_FILE", cachePath)
+				log.Printf("Set GDK_PIXBUF_MODULE_FILE to bundled cache %s", cachePath)
+			} else {
+				log.Printf("Bundled cache %s missing SVG loader, regenerating", cachePath)
+				regenerateLoadersCache(loaderDir)
 			}
+		} else {
+			log.Printf("Bundled loaders cache not found, falling back to runtime generation from %s", loaderDir)
+			regenerateLoadersCache(loaderDir)
 		}
-
-		// Scan loaders dir for .so files missing from cache, append entries
-		if entries, err := os.ReadDir(loaderDir); err == nil {
-			existingCache := strings.Join(lines, "\n")
-			for _, entry := range entries {
-				if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".so") {
-					continue
-				}
-				if strings.Contains(existingCache, entry.Name()) {
-					continue
-				}
-				// Add a proper cache entry. SVG needs specific magic patterns.
-				if strings.Contains(entry.Name(), "svg") {
-					lines = append(lines, fmt.Sprintf("%q", filepath.Join(loaderDir, entry.Name())))
-					lines = append(lines, `"svg" 6 "gdk-pixbuf" "Scalable Vector Graphics" "LGPL"`)
-					lines = append(lines, `"image/svg+xml" "image/svg" "image/svg-xml" "image/vnd.adobe.svg+xml" "text/xml-svg" "image/svg+xml-compressed" ""`)
-					lines = append(lines, `"svg" "svgz" "svg.gz" ""`)
-					lines = append(lines, `" <svg" "*    " 100`)
-					lines = append(lines, `" <!DOCTYPE svg" "*             " 100`)
-				} else {
-					// Add a minimal cache entry for the unknown loader
-					lines = append(lines, fmt.Sprintf("%q", filepath.Join(loaderDir, entry.Name())))
-					lines = append(lines, fmt.Sprintf("%q 0 \"gdk-pixbuf\" \"Unknown\" \"LGPL\"", entry.Name()[:strings.Index(entry.Name(), ".so")]))
-				}
-			}
-		}
-
-		patchedCache := filepath.Join(os.TempDir(), "wiiu-loaders.cache")
-		if err := os.WriteFile(patchedCache, []byte(strings.Join(lines, "\n")), 0644); err == nil {
-			os.Setenv("GDK_PIXBUF_MODULE_FILE", patchedCache)
-		}
+	} else {
+		log.Printf("LoaderDir not found: %s", loaderDir)
 	}
 
 	gioModPath := filepath.Join(bundlePath, "MacOS", "lib", "gio-modules")
@@ -185,11 +160,6 @@ func configureMacOSEnvironment() {
 	sharePath := filepath.Join(bundlePath, "Resources", "share")
 	if _, err := os.Stat(sharePath); err == nil {
 		os.Setenv("XDG_DATA_DIRS", sharePath)
-		if isDarkMode() {
-			os.Setenv("GTK_THEME", "Adwaita:dark")
-		} else {
-			os.Setenv("GTK_THEME", "Adwaita")
-		}
 	}
 }
 
@@ -254,4 +224,55 @@ func showFatalDialogAndLog(prefix string, err error) {
 	d := gtk.MessageDialogNew(nil, 0, gtk.MESSAGE_ERROR, gtk.BUTTONS_OK, "%s: %v", prefix, err)
 	d.Run()
 	d.Destroy()
+}
+
+func bundledLoadersCachePath(bundlePath string) (string, bool) {
+	cachePath := filepath.Join(bundlePath, "Resources", "loaders.cache")
+	if _, err := os.Stat(cachePath); err == nil {
+		return cachePath, true
+	}
+	return "", false
+}
+
+func regenerateLoadersCache(loaderDir string) {
+	cacheDir, _ := os.UserCacheDir()
+	cachePath := filepath.Join(cacheDir, "wiiu-loaders.cache")
+	loaders, _ := filepath.Glob(filepath.Join(loaderDir, "*.so"))
+	cacheData := buildLoadersCache(loaders)
+	if err := os.WriteFile(cachePath, cacheData, 0o644); err == nil {
+		os.Setenv("GDK_PIXBUF_MODULE_FILE", cachePath)
+		log.Printf("Set GDK_PIXBUF_MODULE_FILE to regenerated %s", cachePath)
+	} else {
+		log.Printf("Failed to write regenerated cache: %v", err)
+	}
+}
+
+func buildLoadersCache(loaders []string) []byte {
+	var cache bytes.Buffer
+	cache.WriteString("# GdkPixbuf Image Loader Modules\n# Automatically generated\n\n")
+	for _, loader := range loaders {
+		filename := filepath.Base(loader)
+		entry := getLoaderEntry(filename, loader)
+		if entry == "" {
+			continue
+		}
+		cache.WriteString(entry)
+		cache.WriteString("\n")
+	}
+	return cache.Bytes()
+}
+
+func getLoaderEntry(filename, path string) string {
+	switch {
+	case strings.Contains(filename, "svg"):
+		return fmt.Sprintf("%q\n\"svg\" 6 \"gdk-pixbuf\" \"Scalable Vector Graphics\" \"LGPL\"\n\"image/svg+xml\" \"image/svg\" \"image/svg-xml\" \"image/vnd.adobe.svg+xml\" \"text/xml-svg\" \"image/svg+xml-compressed\" \"\"\n\"svg\" \"svgz\" \"svg.gz\" \"\"\n\" <svg\" \"*    \" 100\n\" <!DOCTYPE svg\" \"*             \" 100", path)
+	case strings.Contains(filename, "bmp"):
+		return fmt.Sprintf("%q\n\"bmp\" 5 \"gdk-pixbuf\" \"BMP\" \"LGPL\"\n\"image/bmp\" \"image/x-bmp\" \"image/x-MS-bmp\" \"\"\n\"bmp\" \"\"\n\"BM\" \"\" 100", path)
+	case strings.Contains(filename, "gif"):
+		return fmt.Sprintf("%q\n\"gif\" 4 \"gdk-pixbuf\" \"GIF\" \"LGPL\"\n\"image/gif\" \"\"\n\"gif\" \"\"\n\"GIF8\" \"\" 100", path)
+	case strings.Contains(filename, "ico"):
+		return fmt.Sprintf("%q\n\"ico\" 5 \"gdk-pixbuf\" \"Windows icon\" \"LGPL\"\n\"image/x-icon\" \"image/x-ico\" \"image/x-win-bitmap\" \"image/vnd.microsoft.icon\" \"application/ico\" \"image/ico\" \"image/icon\" \"text/ico\" \"\"\n\"ico\" \"cur\" \"\"\n\"  \\001   \" \"zz znz\" 100\n\"  \\002   \" \"zz znz\" 100", path)
+	default:
+		return ""
+	}
 }

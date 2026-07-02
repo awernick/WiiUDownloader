@@ -2,6 +2,10 @@ import os
 import subprocess
 import shutil
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from theme_compat import install_adwaita_compat_aliases
 
 
 def run_lipo(output_path, input_paths):
@@ -9,6 +13,36 @@ def run_lipo(output_path, input_paths):
     cmd = ["lipo", "-create"] + input_paths + ["-output", output_path]
     print(f"Running: {' '.join(cmd)}")
     subprocess.check_call(cmd)
+
+
+def rewrite_loaders_cache_paths(cache_text, old_bundle_paths, new_bundle_path):
+    """Rewrite absolute bundle paths inside loaders.cache to the final app path."""
+    rewritten = cache_text
+    for old_bundle_path in old_bundle_paths:
+        if old_bundle_path:
+            rewritten = rewritten.replace(old_bundle_path, new_bundle_path)
+    return rewritten
+
+
+def rewrite_output_loaders_cache(output_app, old_bundle_paths):
+    cache_path = os.path.join(output_app, "Contents", "Resources", "loaders.cache")
+    if not os.path.exists(cache_path):
+        return
+
+    with open(cache_path, "r", encoding="utf-8") as f:
+        cache_text = f.read()
+
+    rewritten = rewrite_loaders_cache_paths(cache_text, old_bundle_paths, output_app)
+    if rewritten != cache_text:
+        with open(cache_path, "w", encoding="utf-8") as f:
+            f.write(rewritten)
+        print(f"Rewrote loaders.cache paths for {output_app}")
+
+
+def install_output_theme_aliases(output_app):
+    adwaita_dir = os.path.join(output_app, "Contents", "Resources", "share", "icons", "Adwaita")
+    if os.path.isdir(adwaita_dir):
+        install_adwaita_compat_aliases(adwaita_dir)
 
 
 def merge_apps(intel_app, arm_app, output_app):
@@ -70,6 +104,31 @@ def merge_apps(intel_app, arm_app, output_app):
                         print(f"Warning: {rel_path} missing in one architecture.")
     else:
         print("No lib directory found, skipping dylib merge.")
+
+    rewrite_output_loaders_cache(output_app, [intel_app, arm_app])
+    install_output_theme_aliases(output_app)
+
+    # Ad-hoc code signing (lipo strips signatures, macOS SIP requires signed dlopen'd code)
+    print("Signing universal app...")
+    out_macos = os.path.join(output_app, "Contents", "MacOS")
+    for root, dirs, files in os.walk(out_macos):
+        for f in sorted(files):
+            if f.endswith(".so") or f.endswith(".dylib"):
+                p = os.path.join(root, f)
+                res = subprocess.run(["codesign", "--sign", "-", "--force", "--timestamp=none", p],
+                                     capture_output=True, text=True)
+                if res.returncode != 0:
+                    print(f"Warning: codesign failed for {p}: {res.stderr}")
+    res = subprocess.run(["codesign", "--sign", "-", "--force", "--timestamp=none", out_exe],
+                         capture_output=True, text=True)
+    if res.returncode != 0:
+        print(f"Warning: codesign failed for main exe: {res.stderr}")
+    res = subprocess.run(["codesign", "--sign", "-", "--force", "--deep", "--timestamp=none", output_app],
+                         capture_output=True, text=True)
+    if res.returncode != 0:
+        print(f"Warning: codesign failed for bundle: {res.stderr}")
+    else:
+        print("Code signing complete")
 
     print(f"Universal app created at {output_app}")
 

@@ -7,10 +7,14 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"runtime"
 	"strings"
+	"sync"
+	"sync/atomic"
 
 	wiiudownloader "github.com/Xpl0itU/WiiUDownloader"
 	"github.com/gotk3/gotk3/gdk"
+	"github.com/gotk3/gotk3/glib"
 	"github.com/gotk3/gotk3/gtk"
 )
 
@@ -92,16 +96,59 @@ func normalizeFilename(filename string) string {
 	return result
 }
 
+func adwaitaThemeName(darkMode bool) string {
+	if darkMode {
+		return "Adwaita:dark"
+	}
+	return "Adwaita"
+}
+
+var desiredDark atomic.Bool
+var guardConnected sync.Once
+
 func setDarkTheme(darkMode bool) {
+	theme := adwaitaThemeName(darkMode)
+	desiredDark.Store(darkMode)
+	if runtime.GOOS == "darwin" {
+		os.Setenv("GTK_THEME", theme)
+	}
+
 	gSettings, err := gtk.SettingsGetDefault()
-	if err != nil {
-		log.Println(err.Error())
+	if err != nil || gSettings == nil {
+		log.Printf("setDarkTheme: GtkSettings default unavailable (err=%v); GTK_THEME=%s still set", err, theme)
 		return
 	}
-	if gSettings == nil {
-		return
-	}
+
 	gSettings.SetProperty("gtk-application-prefer-dark-theme", darkMode)
+	gSettings.SetProperty("gtk-theme-name", theme)
+
+	if runtime.GOOS == "darwin" {
+		guardConnected.Do(func() {
+			gSettings.Connect("notify::gtk-theme-name", func() {
+				desired := adwaitaThemeName(desiredDark.Load())
+				if cur := readThemeName(gSettings); cur == desired {
+					return // avoid thrashing when SetProperty already matches
+				}
+				gSettings.SetProperty("gtk-theme-name", desired)
+			})
+		})
+	}
+}
+
+func readThemeName(s *gtk.Settings) string {
+	v, err := s.GetProperty("gtk-theme-name")
+	if err != nil {
+		return ""
+	}
+	switch x := v.(type) {
+	case string:
+		return x
+	case *glib.Value:
+		if str, err := x.GetString(); err == nil {
+			return str
+		}
+	}
+	return ""
 }
 
 func applyStyling() {

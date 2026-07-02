@@ -908,7 +908,7 @@ func (mw *MainWindow) setupDonationBar() {
 
 		btnBox, _ := gtk.BoxNew(gtk.ORIENTATION_VERTICAL, 4)
 		btnBox.PackStart(button, false, false, 0)
-		supporterLabel, _ := gtk.LabelNew("Join 80+ supporters")
+		supporterLabel, _ := gtk.LabelNew("Join 100+ supporters")
 		addStyleClass(supporterLabel.GetStyleContext, "supporter-count")
 		supporterLabel.SetHAlign(gtk.ALIGN_CENTER)
 		btnBox.PackStart(supporterLabel, false, false, 0)
@@ -924,7 +924,7 @@ func (mw *MainWindow) updateDonationBar(success bool) {
 	if mw.donationLabel == nil || mw.donationBar == nil {
 		return
 	}
-	text := "<span size='large'><span foreground='#00a2ed'><b>Free forever.</b></span> Support with a <b>small donation</b> if you love it</span>"
+	text := "<span size='large'><span foreground='#00a2ed'><b>Free forever.</b></span> I'm building this solo, a <b>small donation</b> helps keep updates coming</span>"
 	if success {
 		text = "<span size='large'>This tool is free. <span foreground='#16a34a'>Your support keeps it that way.</span></span>"
 	}
@@ -999,7 +999,7 @@ func (mw *MainWindow) showSuccessDialog(count int, path string) {
 		donationBox.SetMarginTop(6)
 
 		nudgeLabel, _ := gtk.LabelNew("")
-		nudgeLabel.SetMarkup("<span size='medium'><b>This tool is free.</b> Your support keeps it that way.</span>")
+		nudgeLabel.SetMarkup("<span size='medium'><b>This tool is free.</b> Your Support Makes a Difference! Free, open-source, and built in free time. Did this save you time? A small tip keeps the lights on and ensures future maintenance!</span>")
 		nudgeLabel.SetLineWrap(true)
 		nudgeLabel.SetLineWrapMode(pango.WRAP_WORD)
 		nudgeLabel.SetXAlign(0.5)
@@ -1022,7 +1022,7 @@ func (mw *MainWindow) showSuccessDialog(count int, path string) {
 		})
 		donationBox.PackStart(kofiBtn, false, false, 6)
 
-		supporterSmall, _ := gtk.LabelNew("Join 80+ supporters")
+		supporterSmall, _ := gtk.LabelNew("Join 100+ supporters")
 		addStyleClass(supporterSmall.GetStyleContext, "supporter-count")
 		supporterSmall.SetHAlign(gtk.ALIGN_CENTER)
 		donationBox.PackStart(supporterSmall, false, false, 0)
