@@ -96,42 +96,36 @@ func normalizeFilename(filename string) string {
 	return result
 }
 
-func adwaitaThemeName(darkMode bool) string {
-	if darkMode {
-		return "Adwaita:dark"
-	}
-	return "Adwaita"
-}
 
 var desiredDark atomic.Bool
 var guardConnected sync.Once
 
 func setDarkTheme(darkMode bool) {
-	theme := adwaitaThemeName(darkMode)
 	desiredDark.Store(darkMode)
+
 	if runtime.GOOS == "darwin" {
-		os.Setenv("GTK_THEME", theme)
+		if darkMode {
+			os.Setenv("GTK_THEME", "Adwaita:dark")
+		} else {
+			os.Setenv("GTK_THEME", "Adwaita")
+		}
 	}
 
 	gSettings, err := gtk.SettingsGetDefault()
 	if err != nil || gSettings == nil {
-		log.Printf("setDarkTheme: GtkSettings default unavailable (err=%v); GTK_THEME=%s still set", err, theme)
 		return
 	}
 
 	gSettings.SetProperty("gtk-application-prefer-dark-theme", darkMode)
-	if runtime.GOOS == "darwin" {
-		gSettings.SetProperty("gtk-theme-name", theme)
-	}
+	gSettings.SetProperty("gtk-theme-name", "Adwaita")
 
 	if runtime.GOOS == "darwin" {
 		guardConnected.Do(func() {
 			gSettings.Connect("notify::gtk-theme-name", func() {
-				desired := adwaitaThemeName(desiredDark.Load())
-				if cur := readThemeName(gSettings); cur == desired {
-					return // avoid thrashing when SetProperty already matches
+				if cur := readThemeName(gSettings); cur == "Adwaita" {
+					return
 				}
-				gSettings.SetProperty("gtk-theme-name", desired)
+				gSettings.SetProperty("gtk-theme-name", "Adwaita")
 			})
 		})
 	}
