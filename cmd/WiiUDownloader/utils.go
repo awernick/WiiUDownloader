@@ -120,7 +120,9 @@ func setDarkTheme(darkMode bool) {
 	}
 
 	gSettings.SetProperty("gtk-application-prefer-dark-theme", darkMode)
-	gSettings.SetProperty("gtk-theme-name", theme)
+	if runtime.GOOS == "darwin" {
+		gSettings.SetProperty("gtk-theme-name", theme)
+	}
 
 	if runtime.GOOS == "darwin" {
 		guardConnected.Do(func() {

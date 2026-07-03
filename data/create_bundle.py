@@ -219,10 +219,6 @@ if rsvg_lib:
 else:
     print("Warning: librsvg not found for SVG loader")
 
-# Generate loaders.cache from the bundled loaders so macOS uses the same
-# validated pixbuf metadata as the source environment.
-# Set DYLD_LIBRARY_PATH so that librsvg-2.2.dylib can be found when the
-# query tool inspects libpixbufloader_svg.so (rpath fixes haven't run yet).
 cache_path = os.path.join(resources_path, "loaders.cache")
 query_loaders = os.path.join(brew_prefix, "bin", "gdk-pixbuf-query-loaders")
 bundled_loaders = sorted(glob.glob(os.path.join(loaders_dest, "*.so")))
@@ -236,11 +232,6 @@ if os.path.exists(query_loaders) and bundled_loaders:
     query_env["DYLD_LIBRARY_PATH"] = ":".join(dyld_paths)
     res = subprocess.run([query_loaders] + bundled_loaders, capture_output=True, text=True, env=query_env)
     if res.returncode == 0 and res.stdout:
-        # Rewrite every loader .so path in loaders.cache from the build-time
-        # absolute path (e.g. /Users/runner/work/.../gdkpixbuf_loaders/<name>.so)
-        # to an @executable_path-relative path. macOS dyld resolves that token
-        # in dlopen() calls regardless of where the .app bundle lives on the
-        # user's machine, so the cache stays correct after extraction.
         cache_content = re.sub(
             r'"[^"]*?/gdkpixbuf_loaders/([^"]+\.so)"',
             r'"@executable_path/lib/gdkpixbuf_loaders/\1"',
