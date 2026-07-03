@@ -135,14 +135,12 @@ func configureMacOSEnvironment() {
 	loaderDir := filepath.Join(bundlePath, "MacOS", "lib", "gdkpixbuf_loaders")
 	if _, err := os.Stat(loaderDir); err == nil {
 		os.Setenv("GDK_PIXBUF_MODULE_DIR", loaderDir)
-
-		if cachePath, ok := bundledLoadersCachePath(bundlePath); ok {
-			cacheData, err := os.ReadFile(cachePath)
-			if err == nil && strings.Contains(string(cacheData), "libpixbufloader_svg") {
+		if cacheOrig, ok := bundledLoadersCachePath(bundlePath); ok {
+			if cachePath, err := rewriteLoadersCachePaths(cacheOrig, loaderDir); err == nil {
 				os.Setenv("GDK_PIXBUF_MODULE_FILE", cachePath)
-				log.Printf("Set GDK_PIXBUF_MODULE_FILE to bundled cache %s", cachePath)
+				log.Printf("Set GDK_PIXBUF_MODULE_FILE to rewritten bundle cache %s", cachePath)
 			} else {
-				log.Printf("Bundled cache %s missing SVG loader, regenerating", cachePath)
+				log.Printf("loaders.cache rewrite failed: %v; falling back to runtime generation from %s", err, loaderDir)
 				regenerateLoadersCache(loaderDir)
 			}
 		} else {
@@ -232,6 +230,54 @@ func bundledLoadersCachePath(bundlePath string) (string, bool) {
 		return cachePath, true
 	}
 	return "", false
+}
+
+func rewriteLoadersCachePaths(cacheOrig, runtimeLoaderDir string) (string, error) {
+	data, err := os.ReadFile(cacheOrig)
+	if err != nil {
+		return "", err
+	}
+	lines := strings.Split(string(data), "\n")
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "\"") && strings.HasSuffix(trimmed, ".so\"") {
+			soName := filepath.Base(strings.Trim(trimmed, "\""))
+			lines[i] = "\"" + filepath.Join(runtimeLoaderDir, soName) + "\""
+		}
+	}
+	cacheDir, err := os.UserCacheDir()
+	if err != nil {
+		return "", err
+	}
+	cachePath := filepath.Join(cacheDir, "wiiu-loaders.cache")
+	// Write to a temp file then atomically rename so a second concurrent
+	// launch of the app can't leave readers with a torn cache.
+	tmp, err := os.CreateTemp(cacheDir, "wiiu-loaders.cache.*")
+	if err != nil {
+		return "", err
+	}
+	tmpPath := tmp.Name()
+	defer func() {
+		// If we never made it to the rename, clean up the dangling temp.
+		if _, statErr := os.Stat(tmpPath); statErr == nil {
+			os.Remove(tmpPath)
+		}
+	}()
+	if _, err := tmp.Write([]byte(strings.Join(lines, "\n"))); err != nil {
+		tmp.Close()
+		return "", err
+	}
+	if err := tmp.Close(); err != nil {
+		return "", err
+	}
+	if err := os.Rename(tmpPath, cachePath); err != nil {
+		return "", err
+	}
+	// CreateTemp's default mode is 0600; restore 0644 to match prior behavior.
+	if err := os.Chmod(cachePath, 0o644); err != nil {
+		return "", err
+	}
+	return cachePath, nil
 }
 
 func regenerateLoadersCache(loaderDir string) {

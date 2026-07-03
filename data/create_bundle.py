@@ -236,10 +236,20 @@ if os.path.exists(query_loaders) and bundled_loaders:
     query_env["DYLD_LIBRARY_PATH"] = ":".join(dyld_paths)
     res = subprocess.run([query_loaders] + bundled_loaders, capture_output=True, text=True, env=query_env)
     if res.returncode == 0 and res.stdout:
+        # Rewrite every loader .so path in loaders.cache from the build-time
+        # absolute path (e.g. /Users/runner/work/.../gdkpixbuf_loaders/<name>.so)
+        # to an @executable_path-relative path. macOS dyld resolves that token
+        # in dlopen() calls regardless of where the .app bundle lives on the
+        # user's machine, so the cache stays correct after extraction.
+        cache_content = re.sub(
+            r'"[^"]*?/gdkpixbuf_loaders/([^"]+\.so)"',
+            r'"@executable_path/lib/gdkpixbuf_loaders/\1"',
+            res.stdout,
+        )
         with open(cache_path, "w") as f:
-            f.write(res.stdout)
-        svg_present = "libpixbufloader_svg.so" in res.stdout
-        print(f"Created loaders.cache ({len(bundled_loaders)} loaders, svg={'OK' if svg_present else 'MISSING'})")
+            f.write(cache_content)
+        svg_present = "libpixbufloader_svg.so" in cache_content
+        print(f"Created loaders.cache ({len(bundled_loaders)} loaders, svg={'OK' if svg_present else 'MISSING'}, paths=@executable_path)")
     else:
         open(cache_path, "w").close()
         print("Warning: gdk-pixbuf-query-loaders failed, created empty loaders.cache")
