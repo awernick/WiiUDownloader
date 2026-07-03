@@ -24,13 +24,15 @@ func newWriterProgress(writer io.Writer, progressReporter ProgressReporter, file
 }
 
 func (r *WriterProgress) Write(p []byte) (n int, err error) {
-	if waiter, ok := r.progressReporter.(pauseWaiter); ok {
-		if !waiter.WaitIfPaused() {
+	if r.progressReporter != nil {
+		if waiter, ok := r.progressReporter.(pauseWaiter); ok {
+			if !waiter.WaitIfPaused() {
+				return 0, errCancel
+			}
+		}
+		if r.progressReporter.Cancelled() {
 			return 0, errCancel
 		}
-	}
-	if r.progressReporter != nil && r.progressReporter.Cancelled() {
-		return 0, errCancel
 	}
 	n, err = r.writer.Write(p)
 	if err != nil && err != io.EOF {
