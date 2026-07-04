@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from bundle_paths import rewrite_binary
 from theme_compat import install_adwaita_compat_aliases
 
 
@@ -108,9 +109,16 @@ def merge_apps(intel_app, arm_app, output_app):
     rewrite_output_loaders_cache(output_app, [intel_app, arm_app])
     install_output_theme_aliases(output_app)
 
+    out_macos = os.path.join(output_app, "Contents", "MacOS")
+    print("Defensively rewriting universal load commands...")
+    rewrite_binary(out_exe, is_main_exe=True, run_fn=print)
+    for root, _dirs, files in os.walk(out_macos):
+        for f in files:
+            if f.endswith(".dylib") or f.endswith(".so"):
+                rewrite_binary(os.path.join(root, f), is_main_exe=False, run_fn=print)
+
     # Ad-hoc code signing (lipo strips signatures, macOS SIP requires signed dlopen'd code)
     print("Signing universal app...")
-    out_macos = os.path.join(output_app, "Contents", "MacOS")
     for root, dirs, files in os.walk(out_macos):
         for f in sorted(files):
             if f.endswith(".so") or f.endswith(".dylib"):

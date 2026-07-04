@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from bundle_paths import rewrite_binary
 from theme_compat import install_adwaita_compat_aliases
 
 
@@ -272,20 +273,16 @@ try:
     subprocess.run(dylibbundler_cmd, check=True, capture_output=True, text=True)
     print("dylibbundler completed successfully")
 except subprocess.CalledProcessError as e:
-    print(f"dylibbundler failed (continuing anyway): {e.stderr}")
+    print("dylibbundler failed (continuing anyway; rewrite_binary() will fix paths):")
+    print(f"  stdout: {e.stdout!r}")
+    print(f"  stderr: {e.stderr!r}")
 
-# 4. Ensure main exe has rpath
-print("=== Adding rpath to main executable ===")
-run(f'install_name_tool -add_rpath "@executable_path/lib" "{main_exe}"')
-
-# Fix .so files have correct rpaths (do NOT run vtool on .so — corrupts codesign)
+print("=== Rewriting load commands and rpaths ===")
+rewrite_binary(main_exe, is_main_exe=True, run_fn=print)
 for root, dirs, files in os.walk(macos_path):
     for f in files:
-        if f.endswith(".so"):
-            p = os.path.join(root, f)
-            run(f'install_name_tool -id "@rpath/{f}" "{p}"')
-            run(f'install_name_tool -add_rpath "@loader_path" "{p}"')
-            run(f'install_name_tool -add_rpath "@loader_path/.." "{p}"')
+        if f.endswith(".dylib") or f.endswith(".so"):
+            rewrite_binary(os.path.join(root, f), is_main_exe=False, run_fn=print)
 
 # vtool only on main exe and dylibs (not .so which lack LC_BUILD_VERSION)
 set_minimum_macos_version(main_exe)
