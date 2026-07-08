@@ -18,13 +18,19 @@ const (
 	U8_MAGIC_OFFSET_SIZE = 4
 )
 
-func extractWiiContents(path string, tmd *TMD, cipherHashTree cipher.Block, progressReporter ProgressReporter, deleteEncryptedContents bool) error {
+func extractWiiContents(srcPath string, destPath string, tmd *TMD, cipherHashTree cipher.Block, progressReporter ProgressReporter, deleteEncryptedContents bool) error {
+	if destPath == "" {
+		destPath = srcPath
+	}
+	if err := os.MkdirAll(destPath, 0o755); err != nil {
+		return fmt.Errorf("failed to create output directory: %w", err)
+	}
 	for i, content := range tmd.Contents {
 		if progressReporter != nil && len(tmd.Contents) > 0 {
 			progressReporter.UpdateDecryptionProgress(float64(i) / float64(len(tmd.Contents)))
 		}
 
-		srcFile, err := os.Open(filepath.Join(path, content.CIDStr+".app"))
+		srcFile, err := os.Open(filepath.Join(srcPath, content.CIDStr+".app"))
 		if err != nil {
 			return err
 		}
@@ -54,11 +60,11 @@ func extractWiiContents(path string, tmd *TMD, cipherHashTree cipher.Block, prog
 			var outPath string
 			switch {
 			case extractCount == 0 && i == 0:
-				outPath = path
+				outPath = destPath
 			case extractCount == 0:
-				outPath = filepath.Join(path, content.CIDStr)
+				outPath = filepath.Join(destPath, content.CIDStr)
 			default:
-				outPath = filepath.Join(path, content.CIDStr, fmt.Sprintf("u8_%X", pos))
+				outPath = filepath.Join(destPath, content.CIDStr, fmt.Sprintf("u8_%X", pos))
 			}
 
 			if err := u8fmt.Extract(decData[pos:], outPath); err == nil {
@@ -67,7 +73,7 @@ func extractWiiContents(path string, tmd *TMD, cipherHashTree cipher.Block, prog
 		}
 
 		if !foundU8 {
-			outputPath := decryptedWiiContentPath(path, content.CIDStr, deleteEncryptedContents)
+			outputPath := decryptedWiiContentPath(destPath, content.CIDStr, deleteEncryptedContents)
 			if err := os.WriteFile(outputPath, decData, 0o644); err != nil {
 				return err
 			}

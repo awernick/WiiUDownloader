@@ -449,7 +449,7 @@ func downloadFile(progressReporter ProgressReporter, client *http.Client, downlo
 	})
 }
 
-func DownloadTitle(titleID, outputDirectory string, doDecryption bool, progressReporter ProgressReporter, deleteEncryptedContents bool, client *http.Client) error {
+func DownloadTitle(titleID, outputDirectory string, doDecryption bool, progressReporter ProgressReporter, deleteEncryptedContents bool, client *http.Client, decryptOutputDir string) error {
 	tid, err := strconv.ParseUint(titleID, 16, 64)
 	if err != nil {
 		return err
@@ -596,7 +596,11 @@ func DownloadTitle(titleID, outputDirectory string, doDecryption bool, progressR
 	}
 
 	if doDecryption && !isCancelled(progressReporter) {
-		if err := DecryptContents(outputDir, progressReporter, deleteEncryptedContents); err != nil {
+		decryptOut := ""
+		if decryptOutputDir != "" {
+			decryptOut = filepath.Join(decryptOutputDir, filepath.Base(outputDir))
+		}
+		if err := DecryptContents(outputDir, progressReporter, deleteEncryptedContents, decryptOut); err != nil {
 			return err
 		}
 	}

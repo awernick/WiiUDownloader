@@ -24,8 +24,15 @@ const (
 	FST_HASHED_CONTENT_TYPE = 0x02
 )
 
-func extractWiiUContents(path string, tmd *TMD, cipherHashTree cipher.Block, progressReporter ProgressReporter, deleteEncryptedContents bool) error {
-	fstEncFile, err := os.Open(filepath.Join(path, tmd.Contents[0].CIDStr+".app"))
+func extractWiiUContents(srcPath string, destPath string, tmd *TMD, cipherHashTree cipher.Block, progressReporter ProgressReporter, deleteEncryptedContents bool) error {
+	if destPath == "" {
+		destPath = srcPath
+	}
+	if err := os.MkdirAll(destPath, 0o755); err != nil {
+		return fmt.Errorf("failed to create output directory: %w", err)
+	}
+
+	fstEncFile, err := os.Open(filepath.Join(srcPath, tmd.Contents[0].CIDStr+".app"))
 	if err != nil {
 		return err
 	}
@@ -38,10 +45,10 @@ func extractWiiUContents(path string, tmd *TMD, cipherHashTree cipher.Block, pro
 
 	table, err := fstfmt.Parse(decryptedBuffer.Bytes())
 	if err != nil {
-		return extractRawWiiUContents(path, tmd, cipherHashTree, progressReporter, deleteEncryptedContents)
+		return extractRawWiiUContents(srcPath, destPath, tmd, cipherHashTree, progressReporter, deleteEncryptedContents)
 	}
 	if len(table.Entries) == 0 {
-		return extractRawWiiUContents(path, tmd, cipherHashTree, progressReporter, deleteEncryptedContents)
+		return extractRawWiiUContents(srcPath, destPath, tmd, cipherHashTree, progressReporter, deleteEncryptedContents)
 	}
 
 	entry := make([]uint32, MAX_LEVELS)
@@ -68,13 +75,13 @@ func extractWiiUContents(path string, tmd *TMD, cipherHashTree cipher.Block, pro
 			}
 
 			// Create the directory immediately to support empty folders
-			currentOutputPath := path
+			currentOutputPath := destPath
 			for j := uint32(0); j < level; j++ {
 				directory, err := table.NameAt(table.Entries[entry[j]].NameOffset & FST_NAME_OFFSET_MASK)
 				if err != nil {
 					return fmt.Errorf("failed to read directory name: %w", err)
 				}
-				currentOutputPath, err = safeJoinUnderBase(path, currentOutputPath, directory)
+				currentOutputPath, err = safeJoinUnderBase(destPath, currentOutputPath, directory)
 				if err != nil {
 					return err
 				}
@@ -86,13 +93,13 @@ func extractWiiUContents(path string, tmd *TMD, cipherHashTree cipher.Block, pro
 			continue
 		}
 
-		currentOutputPath := path
+		currentOutputPath := destPath
 		for j := uint32(0); j < level; j++ {
 			directory, err := table.NameAt(table.Entries[entry[j]].NameOffset & FST_NAME_OFFSET_MASK)
 			if err != nil {
 				return fmt.Errorf("failed to read directory name: %w", err)
 			}
-			currentOutputPath, err = safeJoinUnderBase(path, currentOutputPath, directory)
+			currentOutputPath, err = safeJoinUnderBase(destPath, currentOutputPath, directory)
 			if err != nil {
 				return err
 			}
@@ -105,7 +112,7 @@ func extractWiiUContents(path string, tmd *TMD, cipherHashTree cipher.Block, pro
 		if err != nil {
 			return fmt.Errorf("failed to read file name: %w", err)
 		}
-		targetPath, err := safeJoinUnderBase(path, currentOutputPath, fileName)
+		targetPath, err := safeJoinUnderBase(destPath, currentOutputPath, fileName)
 		if err != nil {
 			return err
 		}
@@ -122,7 +129,7 @@ func extractWiiUContents(path string, tmd *TMD, cipherHashTree cipher.Block, pro
 			return fmt.Errorf("invalid content index %d", currentEntry.ContentID)
 		}
 		matchingContent := tmd.Contents[currentEntry.ContentID]
-		srcFile, err := os.Open(filepath.Join(path, matchingContent.CIDStr+".app"))
+		srcFile, err := os.Open(filepath.Join(srcPath, matchingContent.CIDStr+".app"))
 		if err != nil {
 			return err
 		}
@@ -143,18 +150,24 @@ func extractWiiUContents(path string, tmd *TMD, cipherHashTree cipher.Block, pro
 	return nil
 }
 
-func extractRawWiiUContents(path string, tmd *TMD, cipherHashTree cipher.Block, progressReporter ProgressReporter, deleteEncryptedContents bool) error {
+func extractRawWiiUContents(srcPath string, destPath string, tmd *TMD, cipherHashTree cipher.Block, progressReporter ProgressReporter, deleteEncryptedContents bool) error {
+	if destPath == "" {
+		destPath = srcPath
+	}
+	if err := os.MkdirAll(destPath, 0o755); err != nil {
+		return fmt.Errorf("failed to create output directory: %w", err)
+	}
 	for i, content := range tmd.Contents {
 		if progressReporter != nil && len(tmd.Contents) > 0 {
 			progressReporter.UpdateDecryptionProgress(float64(i) / float64(len(tmd.Contents)))
 		}
 
-		srcFile, err := os.Open(filepath.Join(path, content.CIDStr+".app"))
+		srcFile, err := os.Open(filepath.Join(srcPath, content.CIDStr+".app"))
 		if err != nil {
 			return err
 		}
 
-		targetPath := decryptedWiiContentPath(path, content.CIDStr, deleteEncryptedContents)
+		targetPath := decryptedWiiContentPath(destPath, content.CIDStr, deleteEncryptedContents)
 		contentIndex := binary.BigEndian.Uint16(content.Index)
 		if content.Type&FST_HASHED_CONTENT_TYPE != 0 {
 			err = extractFileHash(srcFile, 0, 0, content.Size, targetPath, contentIndex, cipherHashTree)

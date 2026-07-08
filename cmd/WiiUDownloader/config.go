@@ -18,6 +18,7 @@ type Config struct {
 	DarkMode                bool   `koanf:"darkMode"`
 	DecryptContents         bool   `koanf:"decryptContents"`
 	DeleteEncryptedContents bool   `koanf:"deleteEncryptedContents"`
+	DecryptOutputPath       string `koanf:"decryptOutputPath"`
 	ContinueOnError         bool   `koanf:"continueOnError"`
 	SuggestRelatedContent   bool   `koanf:"suggestRelatedContent"`
 	SelectedRegion          uint8  `koanf:"selectedRegion"`

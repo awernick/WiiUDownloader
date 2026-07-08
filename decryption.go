@@ -41,12 +41,16 @@ type Content struct {
 	CIDStr string
 }
 
-func DecryptContents(path string, progressReporter ProgressReporter, deleteEncryptedContents bool) (err error) {
+func DecryptContents(path string, progressReporter ProgressReporter, deleteEncryptedContents bool, decryptOutputPath string) (err error) {
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("decryption error: %w", err)
 		}
 	}()
+
+	if decryptOutputPath == "" {
+		decryptOutputPath = path
+	}
 
 	tmdPath := filepath.Join(path, "title.tmd")
 	if _, statErr := os.Stat(tmdPath); os.IsNotExist(statErr) {
@@ -93,11 +97,11 @@ func DecryptContents(path string, progressReporter ProgressReporter, deleteEncry
 	}
 
 	if tmd.Version == TMD_VERSION_WIIU {
-		if err := extractWiiUContents(path, tmd, cipherHashTree, progressReporter, deleteEncryptedContents); err != nil {
+		if err := extractWiiUContents(path, decryptOutputPath, tmd, cipherHashTree, progressReporter, deleteEncryptedContents); err != nil {
 			return err
 		}
 	} else {
-		if err := extractWiiContents(path, tmd, cipherHashTree, progressReporter, deleteEncryptedContents); err != nil {
+		if err := extractWiiContents(path, decryptOutputPath, tmd, cipherHashTree, progressReporter, deleteEncryptedContents); err != nil {
 			return err
 		}
 	}

@@ -849,7 +849,15 @@ func shouldShowQueueErrorSummary(runErr error, errors []DownloadError) bool {
 }
 
 func (mw *MainWindow) onDecryptContentsMenuItemClicked(selectedPath string) error {
-	err := wiiudownloader.DecryptContents(selectedPath, mw.progressWindow, false)
+	config, loadErr := loadConfig()
+	if loadErr != nil {
+		return loadErr
+	}
+	decryptOut := ""
+	if config.DecryptOutputPath != "" {
+		decryptOut = filepath.Join(config.DecryptOutputPath, filepath.Base(selectedPath))
+	}
+	err := wiiudownloader.DecryptContents(selectedPath, mw.progressWindow, false, decryptOut)
 
 	uiIdleAdd(func() {
 		mw.progressWindow.Window.Hide()
@@ -862,7 +870,7 @@ func (mw *MainWindow) onDecryptContentsMenuItemClicked(selectedPath string) erro
 		if len(errors) > 0 && config.ContinueOnError {
 			mw.showErrorsDialog(errors)
 		} else if len(errors) == 0 {
-			mw.showSuccessDialog(1, selectedPath)
+			mw.showSuccessDialog(1, selectedPath, decryptOut)
 		}
 	})
 	return err
@@ -933,7 +941,7 @@ func (mw *MainWindow) updateDonationBar(success bool) {
 	mw.donationLabel.SetMarkup(text)
 }
 
-func (mw *MainWindow) showSuccessDialog(count int, path string) {
+func (mw *MainWindow) showSuccessDialog(count int, downloadPath string, decryptOutputPath string) {
 	dialog, err := gtk.DialogNew()
 	if err != nil {
 		log.Println("Unable to create success dialog:", err)
@@ -965,31 +973,77 @@ func (mw *MainWindow) showSuccessDialog(count int, path string) {
 	contentArea.PackStart(header, false, false, 0)
 
 	// Summary Info
-	infoLabel, _ := gtk.LabelNew("")
-	infoLabel.SetMarkup(fmt.Sprintf("Successfully processed %d items.\nSaved to: <span size='small'>%s</span>", count, path))
-	infoLabel.SetLineWrap(true)
-	infoLabel.SetEllipsize(pango.ELLIPSIZE_MIDDLE)
-	infoLabel.SetMaxWidthChars(60)
-	infoLabel.SetXAlign(0.5)
-	infoLabel.SetJustify(gtk.JUSTIFY_CENTER)
-	contentArea.PackStart(infoLabel, false, false, 6)
+	showDual := decryptOutputPath != "" && decryptOutputPath != downloadPath
+	if showDual {
+		infoLabel, _ := gtk.LabelNew("")
+		infoLabel.SetMarkup(fmt.Sprintf("Successfully processed %d items.\n<span size='small'>Download: %s</span>\n<span size='small'>Decrypted: %s</span>", count, downloadPath, decryptOutputPath))
+		infoLabel.SetLineWrap(true)
+		infoLabel.SetEllipsize(pango.ELLIPSIZE_MIDDLE)
+		infoLabel.SetMaxWidthChars(60)
+		infoLabel.SetXAlign(0.5)
+		infoLabel.SetJustify(gtk.JUSTIFY_CENTER)
+		contentArea.PackStart(infoLabel, false, false, 6)
+	} else {
+		infoLabel, _ := gtk.LabelNew("")
+		infoLabel.SetMarkup(fmt.Sprintf("Successfully processed %d items.\nSaved to: <span size='small'>%s</span>", count, downloadPath))
+		infoLabel.SetLineWrap(true)
+		infoLabel.SetEllipsize(pango.ELLIPSIZE_MIDDLE)
+		infoLabel.SetMaxWidthChars(60)
+		infoLabel.SetXAlign(0.5)
+		infoLabel.SetJustify(gtk.JUSTIFY_CENTER)
+		contentArea.PackStart(infoLabel, false, false, 6)
+	}
 
-	// Open Folder Button (Primary Utility)
-	openBtn, _ := gtk.ButtonNew()
-	openBtn.SetHAlign(gtk.ALIGN_CENTER)
-	openBtn.SetMarginBottom(12)
-	addStyleClass(openBtn.GetStyleContext, "suggested-action")
+	// Open Folder Button(s)
+	if showDual {
+		linkedBox, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 0)
+		linkedBox.SetHAlign(gtk.ALIGN_CENTER)
+		linkedBox.SetMarginBottom(12)
+		addStyleClass(linkedBox.GetStyleContext, "linked")
 
-	folderIcon, _ := gtk.ImageNewFromIconName("folder-open-symbolic", gtk.ICON_SIZE_BUTTON)
-	folderLabel, _ := gtk.LabelNew("Open Download Folder")
-	openBtnBox, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 6)
-	openBtnBox.PackStart(folderIcon, false, false, 0)
-	openBtnBox.PackStart(folderLabel, false, false, 0)
-	openBtn.Add(openBtnBox)
-	openBtn.Connect("clicked", func() {
-		openURL(path)
-	})
-	contentArea.PackStart(openBtn, false, false, 0)
+		dlBtn, _ := gtk.ButtonNew()
+		dlIcon, _ := gtk.ImageNewFromIconName("folder-open-symbolic", gtk.ICON_SIZE_BUTTON)
+		dlLabel, _ := gtk.LabelNew("Open Downloads")
+		dlBtnBox, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 6)
+		dlBtnBox.PackStart(dlIcon, false, false, 0)
+		dlBtnBox.PackStart(dlLabel, false, false, 0)
+		dlBtn.Add(dlBtnBox)
+		dlBtn.Connect("clicked", func() {
+			openURL(downloadPath)
+		})
+		linkedBox.PackStart(dlBtn, true, true, 0)
+
+		decBtn, _ := gtk.ButtonNew()
+		decIcon, _ := gtk.ImageNewFromIconName("folder-open-symbolic", gtk.ICON_SIZE_BUTTON)
+		decLabel, _ := gtk.LabelNew("Open Decrypted")
+		decBtnBox, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 6)
+		decBtnBox.PackStart(decIcon, false, false, 0)
+		decBtnBox.PackStart(decLabel, false, false, 0)
+		decBtn.Add(decBtnBox)
+		addStyleClass(decBtn.GetStyleContext, "suggested-action")
+		decBtn.Connect("clicked", func() {
+			openURL(decryptOutputPath)
+		})
+		linkedBox.PackStart(decBtn, true, true, 0)
+
+		contentArea.PackStart(linkedBox, false, false, 0)
+	} else {
+		openBtn, _ := gtk.ButtonNew()
+		openBtn.SetHAlign(gtk.ALIGN_CENTER)
+		openBtn.SetMarginBottom(12)
+		addStyleClass(openBtn.GetStyleContext, "suggested-action")
+
+		folderIcon, _ := gtk.ImageNewFromIconName("folder-open-symbolic", gtk.ICON_SIZE_BUTTON)
+		folderLabel, _ := gtk.LabelNew("Open Download Folder")
+		openBtnBox, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 6)
+		openBtnBox.PackStart(folderIcon, false, false, 0)
+		openBtnBox.PackStart(folderLabel, false, false, 0)
+		openBtn.Add(openBtnBox)
+		openBtn.Connect("clicked", func() {
+			openURL(downloadPath)
+		})
+		contentArea.PackStart(openBtn, false, false, 0)
+	}
 
 	// Donation Section (Highlighted)
 	if mw.showDonationBar {
@@ -1715,7 +1769,7 @@ func (mw *MainWindow) onDownloadQueueClicked(selectedPath string, decryptContent
 			}
 			tidStr := fmt.Sprintf("%016x", title.TitleID)
 			titlePath := filepath.Join(selectedPath, fmt.Sprintf("%s [%s] [%s]", normalizeFilename(title.Name), wiiudownloader.GetFormattedKind(title.TitleID), tidStr))
-			downloadErr := wiiudownloader.DownloadTitle(tidStr, titlePath, decryptContents, mw.progressWindow, deleteEncryptedContents, mw.client)
+			downloadErr := wiiudownloader.DownloadTitle(tidStr, titlePath, decryptContents, mw.progressWindow, deleteEncryptedContents, mw.client, config.DecryptOutputPath)
 
 			if downloadErr != nil && downloadErr != context.Canceled {
 				errorType := detectErrorType(downloadErr.Error())
@@ -1752,7 +1806,11 @@ func (mw *MainWindow) onDownloadQueueClicked(selectedPath string, decryptContent
 
 		errors := mw.progressWindow.GetErrors()
 		if len(errors) == 0 && !mw.progressWindow.Cancelled() {
-			mw.showSuccessDialog(totalInQueue, selectedPath)
+			decryptPathToShow := ""
+		if decryptContents && config.DecryptOutputPath != "" {
+			decryptPathToShow = config.DecryptOutputPath
+		}
+		mw.showSuccessDialog(totalInQueue, selectedPath, decryptPathToShow)
 		}
 	})
 
