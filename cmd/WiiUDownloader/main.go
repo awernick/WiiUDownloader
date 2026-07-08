@@ -72,9 +72,11 @@ func main() {
 	client := buildHTTPClient()
 	if configErr != nil {
 		log.Printf("error loading config: %v", configErr)
-		errorDialog := gtk.MessageDialogNew(nil, 0, gtk.MESSAGE_WARNING, gtk.BUTTONS_OK, "Error loading config: %v\n\nStarting with default settings.", configErr)
-		errorDialog.Run()
-		errorDialog.Destroy()
+		uiIdleAdd(func() {
+			errorDialog := gtk.MessageDialogNew(nil, 0, gtk.MESSAGE_WARNING, gtk.BUTTONS_OK, "Error loading config: %v\n\nStarting with default settings.", configErr)
+			errorDialog.Run()
+			errorDialog.Destroy()
+		})
 	}
 
 	win := NewMainWindow(wiiudownloader.GetTitleEntries(wiiudownloader.TITLE_CATEGORY_GAME), client, config)
@@ -94,8 +96,8 @@ func main() {
 			assistant.SetPostSetupCallback(func() {
 				showMainWindow(app, win)
 			})
-			assistant.assistantWindow.ShowAll()
 			app.AddWindow(assistant.assistantWindow)
+			assistant.assistantWindow.ShowAll()
 			if win.window != nil {
 				win.window.Hide()
 			}
@@ -213,7 +215,8 @@ func showMainWindow(app *gtk.Application, win *MainWindow) {
 	win.BuildUI()
 	app.AddWindow(win.window)
 	if win.window != nil {
-		win.window.Show()
+		win.window.ShowAll()
+		win.PostShowInit()
 	}
 }
 

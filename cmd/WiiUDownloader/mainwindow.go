@@ -341,8 +341,6 @@ func (mw *MainWindow) BuildUI() {
 		}
 		return mw.toggleQueueFromKeyboard()
 	})
-	mw.ensureTreeViewCursor()
-	mw.window.SetFocusChild(mw.treeView.ToWidget())
 
 	mainvBox, err := gtk.BoxNew(gtk.ORIENTATION_VERTICAL, 6)
 	if err != nil {
@@ -581,7 +579,6 @@ func (mw *MainWindow) BuildUI() {
 
 	mw.downloadQueueButton = mw.queuePane.downloadButton
 	mw.downloadQueueButton.SetCanDefault(true)
-	mw.downloadQueueButton.GrabDefault()
 	SetupButtonAccessibility(mw.downloadQueueButton, "Start downloading all titles in your queue")
 
 	mw.decryptContentsCheckbox, err = gtk.CheckButtonNewWithLabel("Decrypt contents")
@@ -673,7 +670,12 @@ func (mw *MainWindow) BuildUI() {
 	mw.window.Add(splitPane)
 
 	splitPane.SetPosition(280) // Set default width for QueuePane
-	splitPane.ShowAll()
+}
+
+func (mw *MainWindow) PostShowInit() {
+	mw.ensureTreeViewCursor()
+	mw.window.SetFocusChild(mw.treeView.ToWidget())
+	mw.downloadQueueButton.GrabDefault()
 }
 
 func (mw *MainWindow) onDownloadQueueButtonClicked() {
