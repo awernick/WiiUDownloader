@@ -147,15 +147,22 @@ func (c *Config) Save() error {
 func (c *Config) SetValuesFromConfig(newK *koanf.Koanf) error {
 	c.saveMutex.Lock()
 	defer c.saveMutex.Unlock()
-	// Save system-detected defaults before unmarshaling, since
-	// Unmarshal zeroes missing keys (bool → false, uint8 → 0, etc.).
+
 	darkModeDefault := c.DarkMode
 	selectedRegionDefault := c.SelectedRegion
 	continueOnErrorDefault := c.ContinueOnError
 	getSizeOnQueueDefault := c.GetSizeOnQueue
+
 	if err := newK.Unmarshal("", c); err != nil {
 		return err
 	}
+
+	// Validation: Ensure Region is within bounds (example)
+	if c.SelectedRegion > 7 { // Assuming bitmask 0-7
+		log.Printf("Warning: invalid region %d, resetting to default", c.SelectedRegion)
+		c.SelectedRegion = selectedRegionDefault
+	}
+
 	if !newK.Exists("darkMode") {
 		c.DarkMode = darkModeDefault
 	}

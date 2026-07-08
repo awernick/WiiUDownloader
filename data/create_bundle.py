@@ -51,8 +51,12 @@ def set_minimum_macos_version(path):
 
 
 def get_deps(path):
+    if not os.path.exists(path):
+        print(f"Warning: path does not exist: {path}")
+        return []
     res = run(f'otool -L "{path}"')
-    if not res:
+    if not res or res.returncode != 0:
+        print(f"Warning: otool failed for {path}")
         return []
     deps = []
     for line in res.stdout.split("\n")[1:]:
