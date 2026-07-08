@@ -19,14 +19,16 @@ Check the [WiiUDownloader Usage Guide here](https://xpl0itu.github.io/WiiUDownlo
 
 To install WiiUDownloader, download the appropriate binary for your operating system from the links below:
 
-- [WiiUDownloader-Linux-x86_64.AppImage](https://github.com/Xpl0itU/WiiUDownloader/releases/latest/download/WiiUDownloader-Linux-x86_64.AppImage)
+- [WiiUDownloader-Linux-x86_64.AppImage](https://github.com/Xpl0itU/WiiUDownloader/releases/latest/download/WiiUDownloader-Linux-x86_64.AppImage) (Intel/AMD 64-bit)
+- [WiiUDownloader-Linux-aarch64.AppImage](https://github.com/Xpl0itU/WiiUDownloader/releases/latest/download/WiiUDownloader-Linux-aarch64.AppImage) (ARM 64-bit)
 - [WiiUDownloader-macOS-Universal.dmg](https://github.com/Xpl0itU/WiiUDownloader/releases/latest/download/WiiUDownloader-macOS-Universal.dmg)
 - [WiiUDownloader-Windows.zip](https://github.com/Xpl0itU/WiiUDownloader/releases/latest/download/WiiUDownloader-Windows.zip)
 
 For Linux, you may need to give execution permission to the downloaded binary:
 
 ```bash
-chmod +x WiiUDownloader-Linux-x86_64.AppImage   # For Linux
+chmod +x WiiUDownloader-Linux-x86_64.AppImage   # For Linux (Intel/AMD)
+chmod +x WiiUDownloader-Linux-aarch64.AppImage  # For Linux (ARM)
 ```
 
 ## Usage

@@ -9,7 +9,15 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-latest
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
     steps:
       - name: Check out repository code
         uses: actions/checkout@v6
@@ -20,17 +28,19 @@ jobs:
         id: cache
         continue-on-error: true
         with:
-          key: wiiudownloader-docker-cache-${{ hashFiles('Dockerfile.linux') }}
+          key: wiiudownloader-docker-cache-${{ matrix.arch }}-${{ hashFiles('Dockerfile.linux') }}
       - name: Build Docker container
         if: steps.cache.outputs.cache-hit != 'true'
         run: |
-          docker build . --file Dockerfile.linux --tag builder
+          docker build . --file Dockerfile.linux --tag builder --build-arg ARCH=${{ matrix.arch }}
       - name: Build artifacts
         run: |
-          docker run --rm -v ${PWD}:/project builder bash -lc "curl -Lo db.go -H 'User-Agent: NUSspliBuilder/2.1' 'https://napi.v10lator.de/db?t=go' && if grep -q 'var titleEntry =' db.go; then if grep -q 'type TitleEntry struct' db.go; then sed -i '/type TitleEntry struct/,/}/d' db.go; fi && sed -i 's/var titleEntry =/func init() { TitleDatabase =/' db.go && echo '}' >> db.go; fi && go build -C cmd/WiiUDownloader -o ../../WiiUDownloader ."
+          docker run --rm -v "${PWD}":/project builder bash -lc "curl -Lo db.go -H 'User-Agent: NUSspliBuilder/2.1' 'https://napi.v10lator.de/db?t=go' && if grep -q 'var titleEntry =' db.go; then if grep -q 'type TitleEntry struct' db.go; then sed -i '/type TitleEntry struct/,/}/d' db.go; fi && sed -i 's/var titleEntry =/func init() { TitleDatabase =/' db.go && echo '}' >> db.go; fi && go build -C cmd/WiiUDownloader -o ../../WiiUDownloader ."
       - name: Deploy WiiUDownloader
         run: |
-          docker run --privileged --rm -e DEPLOY_GTK_VERSION=3 -e OUTPUT="WiiUDownloader-Linux-x86_64.AppImage" -e UPDATE_INFORMATION="gh-releases-zsync|Xpl0itU|WiiUDownloader|latest|WiiUDownloader-*.AppImage.zsync" -v ${PWD}:/project builder linuxdeploy.AppImage --plugin gtk --plugin checkrt --output=appimage --create-desktop-file --executable=WiiUDownloader --appdir dist --icon-file data/WiiUDownloader.png
+          CHECKRT_PLUGIN=""
+          if [ "${{ matrix.arch }}" = "x86_64" ]; then CHECKRT_PLUGIN="--plugin checkrt"; fi
+          docker run --privileged --rm -e DEPLOY_GTK_VERSION=3 -e OUTPUT="WiiUDownloader-Linux-${{ matrix.arch }}.AppImage" -e UPDATE_INFORMATION="gh-releases-zsync|Xpl0itU|WiiUDownloader|latest|WiiUDownloader-Linux-${{ matrix.arch }}.AppImage.zsync" -v "${PWD}":/project builder linuxdeploy.AppImage --plugin gtk $CHECKRT_PLUGIN --output=appimage --create-desktop-file --executable=WiiUDownloader --appdir dist --icon-file data/WiiUDownloader.png
       - name: Upload Linux Artifact
         uses: ncipollo/release-action@v1
         with:
