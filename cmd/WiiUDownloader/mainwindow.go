@@ -908,7 +908,7 @@ func (mw *MainWindow) setupDonationBar() {
 
 		btnBox, _ := gtk.BoxNew(gtk.ORIENTATION_VERTICAL, 4)
 		btnBox.PackStart(button, false, false, 0)
-		supporterLabel, _ := gtk.LabelNew("Join 100+ supporters")
+		supporterLabel, _ := gtk.LabelNew("Join 110+ supporters")
 		addStyleClass(supporterLabel.GetStyleContext, "supporter-count")
 		supporterLabel.SetHAlign(gtk.ALIGN_CENTER)
 		btnBox.PackStart(supporterLabel, false, false, 0)
@@ -1022,7 +1022,7 @@ func (mw *MainWindow) showSuccessDialog(count int, path string) {
 		})
 		donationBox.PackStart(kofiBtn, false, false, 6)
 
-		supporterSmall, _ := gtk.LabelNew("Join 100+ supporters")
+		supporterSmall, _ := gtk.LabelNew("Join 110+ supporters")
 		addStyleClass(supporterSmall.GetStyleContext, "supporter-count")
 		supporterSmall.SetHAlign(gtk.ALIGN_CENTER)
 		donationBox.PackStart(supporterSmall, false, false, 0)
