@@ -134,6 +134,7 @@ func NewMainWindow(entries []wiiudownloader.TitleEntry, client *http.Client, con
 	}
 
 	queuePane.updateFunc = mainWindow.updateTitlesInQueue
+	queuePane.SetSetVersionRequested(mainWindow.onSetVersionRequested)
 
 	mainWindow.applyConfig(config)
 	applyStyling()
@@ -905,7 +906,7 @@ func (mw *MainWindow) setupDonationBar() {
 	} else {
 		addStyleClass(button.GetStyleContext, "kofi-btn")
 
-		kofiIcon, _ := gtk.ImageNewFromIconName("starred-symbolic", gtk.ICON_SIZE_BUTTON)
+		kofiIcon, _ := gtk.ImageNewFromIconName(supportMeIconName(), gtk.ICON_SIZE_BUTTON)
 		kofiLabel, _ := gtk.LabelNew("Buy me a coffee")
 		kofiBtnBox, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 6)
 		kofiBtnBox.PackStart(kofiIcon, false, false, 0)
@@ -1066,7 +1067,7 @@ func (mw *MainWindow) showSuccessDialog(count int, downloadPath string, decryptO
 		addStyleClass(kofiBtn.GetStyleContext, "kofi-btn")
 		kofiBtn.SetHAlign(gtk.ALIGN_CENTER)
 
-		kofiIcon, _ := gtk.ImageNewFromIconName("starred-symbolic", gtk.ICON_SIZE_BUTTON)
+		kofiIcon, _ := gtk.ImageNewFromIconName(supportMeIconName(), gtk.ICON_SIZE_BUTTON)
 		kofiLabel, _ := gtk.LabelNew("Buy me a coffee")
 		kofiBtnBox, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 6)
 		kofiBtnBox.PackStart(kofiIcon, false, false, 0)
@@ -1733,11 +1734,12 @@ func (mw *MainWindow) showErrorsDialog(errors []DownloadError) {
 			}
 			entry := wiiudownloader.GetTitleEntryFromTid(tid)
 			if entry.TitleID != 0 {
+				entry.Version = e.Version
 				titles = append(titles, entry)
 			}
 		}
 		if len(titles) > 0 {
-			mw.addTitlesToQueue(titles)
+			mw.addTitlesToQueueInternal(titles)
 			mw.updateTitlesInQueue()
 		}
 	}
@@ -1769,11 +1771,14 @@ func (mw *MainWindow) onDownloadQueueClicked(selectedPath string, decryptContent
 			}
 			tidStr := fmt.Sprintf("%016x", title.TitleID)
 			titlePath := filepath.Join(selectedPath, fmt.Sprintf("%s [%s] [%s]", normalizeFilename(title.Name), wiiudownloader.GetFormattedKind(title.TitleID), tidStr))
-			downloadErr := wiiudownloader.DownloadTitle(tidStr, titlePath, decryptContents, mw.progressWindow, deleteEncryptedContents, mw.client, config.DecryptOutputPath)
+			if title.Version > 0 {
+				titlePath = fmt.Sprintf("%s [v%d]", titlePath, title.Version)
+			}
+			downloadErr := wiiudownloader.DownloadTitle(tidStr, titlePath, title.Version, decryptContents, mw.progressWindow, deleteEncryptedContents, mw.client, config.DecryptOutputPath)
 
 			if downloadErr != nil && downloadErr != context.Canceled {
 				errorType := detectErrorType(downloadErr.Error())
-				mw.progressWindow.AddErrorWithType(title.Name, downloadErr.Error(), tidStr, errorType)
+				mw.progressWindow.AddErrorWithType(title.Name, downloadErr.Error(), tidStr, errorType, title.Version)
 
 				if config.ContinueOnError {
 					queueStatusChan <- true
@@ -1828,51 +1833,80 @@ func (mw *MainWindow) collectTIDs(titles []wiiudownloader.TitleEntry) []uint64 {
 func (mw *MainWindow) addTitlesToQueue(titles []wiiudownloader.TitleEntry) {
 	var toAdd []wiiudownloader.TitleEntry
 	for _, entry := range titles {
-		if !mw.queuePane.IsTitleInQueue(entry) {
-			toAdd = append(toAdd, entry)
+		if mw.queuePane.IsTitleInQueue(entry) {
+			continue
 		}
+		toAdd = append(toAdd, entry)
 	}
 
-	if len(toAdd) == 0 {
+	mw.addTitlesToQueueInternal(toAdd)
+}
+
+func (mw *MainWindow) addTitlesToQueueInternal(titles []wiiudownloader.TitleEntry) {
+	if len(titles) == 0 {
 		return
 	}
 
-	for _, entry := range toAdd {
+	for _, entry := range titles {
 		mw.queuePane.SetTitleLoadingNoUpdate(entry.TitleID)
 	}
-	mw.queuePane.AddTitles(toAdd)
+	mw.queuePane.AddTitles(titles)
 
 	config, _ := loadConfig()
 	if !config.GetSizeOnQueue {
 		return
 	}
 
-	for _, entry := range toAdd {
-		go func(e wiiudownloader.TitleEntry) {
-			// Acquire semaphore
-			mw.sizeFetchSemaphore <- struct{}{}
-			defer func() { <-mw.sizeFetchSemaphore }()
-
-			if !mw.queuePane.IsTitleInQueue(e) {
-				return
-			}
-
-			size, err := fetchTMDSize(e.TitleID, mw.client)
-
-			if !mw.queuePane.IsTitleInQueue(e) {
-				return
-			}
-
-			uiIdleAdd(func() {
-				if err != nil {
-					log.Printf("Failed to fetch size for %016x: %v", e.TitleID, err)
-					mw.queuePane.SetTitleError(e.TitleID)
-				} else {
-					mw.queuePane.SetTitleSize(e.TitleID, size)
-				}
-			})
-		}(entry)
+	for _, entry := range titles {
+		go mw.fetchTitleSize(entry)
 	}
+}
+
+func (mw *MainWindow) fetchTitleSize(entry wiiudownloader.TitleEntry) {
+	mw.sizeFetchSemaphore <- struct{}{}
+	defer func() { <-mw.sizeFetchSemaphore }()
+
+	if !mw.queuePane.IsTitleInQueue(entry) {
+		return
+	}
+
+	size, err := fetchTMDSize(entry.TitleID, entry.Version, mw.client)
+
+	if !mw.queuePane.IsTitleInQueue(entry) {
+		return
+	}
+
+	uiIdleAdd(func() {
+		if err != nil {
+			log.Printf("Failed to fetch size for %016x: %v", entry.TitleID, err)
+			mw.queuePane.SetTitleError(entry.TitleID)
+		} else {
+			mw.queuePane.SetTitleSize(entry.TitleID, size)
+		}
+	})
+}
+
+func (mw *MainWindow) onSetVersionRequested(entries []wiiudownloader.TitleEntry) {
+	if len(entries) == 0 {
+		return
+	}
+	if len(entries) > 1 {
+		infoDialog := gtk.MessageDialogNew(mw.window, gtk.DIALOG_MODAL, gtk.MESSAGE_INFO, gtk.BUTTONS_OK, "Please select a single title to set its version")
+		infoDialog.Run()
+		infoDialog.Destroy()
+		return
+	}
+
+	entry := entries[0]
+	version, ok := showVersionSelectionDialog(mw.window, entry)
+	if !ok {
+		return
+	}
+
+	mw.queuePane.SetTitleVersion(entry.TitleID, version)
+	updated := entry
+	updated.Version = version
+	go mw.fetchTitleSize(updated)
 }
 
 func (mw *MainWindow) showAddByTitleIDDialog() {
@@ -1936,7 +1970,7 @@ func (mw *MainWindow) showAddByTitleIDDialog() {
 			}
 		}
 
-		mw.addTitlesToQueue([]wiiudownloader.TitleEntry{entry})
+		mw.addTitlesToQueueInternal([]wiiudownloader.TitleEntry{entry})
 		mw.updateTitlesInQueue()
 	}
 }

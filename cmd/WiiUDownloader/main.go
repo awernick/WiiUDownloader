@@ -235,6 +235,14 @@ func bundledLoadersCachePath(bundlePath string) (string, bool) {
 	return "", false
 }
 
+func bundledAdwaitaSymbolicIconPath(bundlePath, category, iconName string) (string, bool) {
+	iconPath := filepath.Join(bundlePath, "Resources", "share", "icons", "Adwaita", "symbolic", category, iconName)
+	if _, err := os.Stat(iconPath); err == nil {
+		return iconPath, true
+	}
+	return "", false
+}
+
 func rewriteLoadersCachePaths(cacheOrig, runtimeLoaderDir string) (string, error) {
 	data, err := os.ReadFile(cacheOrig)
 	if err != nil {

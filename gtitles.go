@@ -52,6 +52,7 @@ type TitleEntry struct {
 	Region   uint8
 	Key      uint8
 	Category uint8
+	Version  int
 }
 
 var TitleDatabase []TitleEntry

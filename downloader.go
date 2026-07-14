@@ -449,7 +449,7 @@ func downloadFile(progressReporter ProgressReporter, client *http.Client, downlo
 	})
 }
 
-func DownloadTitle(titleID, outputDirectory string, doDecryption bool, progressReporter ProgressReporter, deleteEncryptedContents bool, client *http.Client, decryptOutputDir string) error {
+func DownloadTitle(titleID, outputDirectory string, version int, doDecryption bool, progressReporter ProgressReporter, deleteEncryptedContents bool, client *http.Client, decryptOutputDir string) error {
 	tid, err := strconv.ParseUint(titleID, 16, 64)
 	if err != nil {
 		return err
@@ -476,7 +476,11 @@ func DownloadTitle(titleID, outputDirectory string, doDecryption bool, progressR
 	}
 
 	tmdPath := filepath.Join(outputDir, "title.tmd")
-	if err := downloadFileWithOptions(context.Background(), progressReporter, client, fmt.Sprintf("%s/%s", baseURL, "tmd"), tmdPath, downloadOptions{
+	tmdURL := fmt.Sprintf("%s/tmd", baseURL)
+	if version > 0 {
+		tmdURL = fmt.Sprintf("%s/tmd.%d", baseURL, version)
+	}
+	if err := downloadFileWithOptions(context.Background(), progressReporter, client, tmdURL, tmdPath, downloadOptions{
 		DoRetries:   true,
 		AllowResume: true,
 		UserAgent:   "WiiUDownloader",

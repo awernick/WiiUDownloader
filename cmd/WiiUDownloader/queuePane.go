@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	wiiudownloader "github.com/Xpl0itU/WiiUDownloader"
+	"github.com/gotk3/gotk3/gdk"
 	"github.com/gotk3/gotk3/glib"
 	"github.com/gotk3/gotk3/gtk"
 )
@@ -18,6 +19,13 @@ const (
 	QUEUE_BUTTON_HEIGHT           = 42
 	TID_BASE_16                   = 16
 	TID_BITS_64                   = 64
+
+	QUEUE_COL_NAME    = 0
+	QUEUE_COL_REGION  = 1
+	QUEUE_COL_KIND    = 2
+	QUEUE_COL_TID     = 3
+	QUEUE_COL_VERSION = 4
+	QUEUE_COL_SIZE    = 5
 )
 
 type QueuePane struct {
@@ -31,6 +39,8 @@ type QueuePane struct {
 	titleSizes            map[uint64]string
 	titleBytes            map[uint64]uint64
 	updateFunc            func()
+	setVersionRequested   func([]wiiudownloader.TitleEntry)
+	versionColumn         *gtk.TreeViewColumn
 }
 
 func createColumn(renderer *gtk.CellRendererText, title string, id int) (*gtk.TreeViewColumn, error) {
@@ -44,7 +54,7 @@ func NewQueuePane() (*QueuePane, error) {
 	}
 	scrolledWindow.SetPolicy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
 
-	store, err := gtk.ListStoreNew(glib.TYPE_STRING, glib.TYPE_STRING, glib.TYPE_STRING, glib.TYPE_STRING, glib.TYPE_STRING)
+	store, err := gtk.ListStoreNew(glib.TYPE_STRING, glib.TYPE_STRING, glib.TYPE_STRING, glib.TYPE_STRING, glib.TYPE_STRING, glib.TYPE_STRING)
 	if err != nil {
 		return nil, err
 	}
@@ -59,7 +69,7 @@ func NewQueuePane() (*QueuePane, error) {
 	}
 	selection.SetMode(gtk.SELECTION_MULTIPLE)
 	SetupTreeViewAccessibility(titleTreeView)
-	titleTreeView.ToWidget().SetProperty("tooltip-text", "Download queue - Shows games queued for download. Use arrow keys to navigate, space to select/deselect, or click Remove from Queue button to remove selected titles")
+	titleTreeView.ToWidget().SetProperty("tooltip-text", "Download queue - Shows games queued for download. Use arrow keys to navigate, space to select/deselect, click the Version column to set a title's version, or click Remove from Queue button to remove selected titles")
 
 	titleTreeView.SetModel(store)
 
@@ -88,7 +98,27 @@ func NewQueuePane() (*QueuePane, error) {
 	kindColumn.SetMaxWidth(QUEUE_KIND_COLUMN_MAX_WIDTH)
 	titleTreeView.AppendColumn(kindColumn)
 
-	sizeColumn, err := createColumn(renderer, "Size", 4)
+	versionColumn, err := createColumn(renderer, "Version", 4)
+	if err != nil {
+		return nil, err
+	}
+	versionColumn.SetMaxWidth(120)
+	headerBox, err := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 4)
+	if err == nil {
+		versionHeaderLabel, _ := gtk.LabelNew("Version")
+		versionHeaderImage, _ := gtk.ImageNewFromIconName("document-edit-symbolic", gtk.ICON_SIZE_MENU)
+		if versionHeaderImage != nil {
+			headerBox.PackStart(versionHeaderImage, false, false, 0)
+		}
+		if versionHeaderLabel != nil {
+			headerBox.PackStart(versionHeaderLabel, false, false, 0)
+		}
+		headerBox.ShowAll()
+		versionColumn.SetWidget(headerBox)
+	}
+	titleTreeView.AppendColumn(versionColumn)
+
+	sizeColumn, err := createColumn(renderer, "Size", 5)
 	if err != nil {
 		return nil, err
 	}
@@ -129,7 +159,7 @@ func NewQueuePane() (*QueuePane, error) {
 		return nil, err
 	}
 	downloadLabel, err := gtk.LabelNew("Download Queue")
-	downloadIcon, err := gtk.ImageNewFromIconName("folder-download-symbolic", gtk.ICON_SIZE_BUTTON)
+	downloadIcon, err := gtk.ImageNewFromIconName(queueDownloadIconName(), gtk.ICON_SIZE_BUTTON)
 	if err == nil {
 		downloadLabel.SetJustify(gtk.JUSTIFY_CENTER)
 		downloadBtnBox, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 6)
@@ -163,7 +193,70 @@ func NewQueuePane() (*QueuePane, error) {
 		totalSizeLabel:        totalSizeLabel,
 		titleSizes:            make(map[uint64]string),
 		titleBytes:            make(map[uint64]uint64),
+		versionColumn:         versionColumn,
 	}
+
+	titleTreeView.Connect("button-press-event", func(treeView *gtk.TreeView, event *gdk.Event) bool {
+		btnEvent := gdk.EventButtonNewFromEvent(event)
+		if btnEvent.Button() != 1 {
+			return false
+		}
+		if queuePane.setVersionRequested == nil || queuePane.versionColumn == nil {
+			return false
+		}
+
+		x, y := btnEvent.X(), btnEvent.Y()
+		path, column, _, _, _ := treeView.GetPathAtPos(int(x), int(y))
+		if path == nil || column.GetTitle() != "Version" {
+			return false
+		}
+
+		model, err := treeView.GetModel()
+		if err != nil {
+			return false
+		}
+		storeRef, ok := model.(*gtk.ListStore)
+		if !ok {
+			return false
+		}
+		iter, err := storeRef.GetIter(path)
+		if err != nil {
+			return false
+		}
+
+		tidVal, err := storeRef.GetValue(iter, QUEUE_COL_TID)
+		if err != nil {
+			return false
+		}
+		tidStr, err := tidVal.GetString()
+		if err != nil {
+			return false
+		}
+		tid, err := strconv.ParseUint(tidStr, TID_BASE_16, TID_BITS_64)
+		if err != nil {
+			return false
+		}
+
+		var entry wiiudownloader.TitleEntry
+		queuePane.titleQueue.WithRLock(func(queue []wiiudownloader.TitleEntry) {
+			for _, t := range queue {
+				if t.TitleID == tid {
+					entry = t
+					break
+				}
+			}
+		})
+
+		if entry.TitleID != 0 {
+			selection, err := treeView.GetSelection()
+			if err == nil {
+				selection.UnselectAll()
+				selection.SelectPath(path)
+			}
+			queuePane.setVersionRequested([]wiiudownloader.TitleEntry{entry})
+		}
+		return true
+	})
 
 	removeFromQueueButton.Connect("clicked", func() {
 		selection, err := titleTreeView.GetSelection()
@@ -202,7 +295,7 @@ func NewQueuePane() (*QueuePane, error) {
 		for iter != nil {
 			isSelected := selection.IterIsSelected(iter)
 			if isSelected {
-				tid, err := treeModel.GetValue(iter, 3)
+				tid, err := treeModel.GetValue(iter, QUEUE_COL_TID)
 				if err != nil {
 					continue
 				}
@@ -407,7 +500,7 @@ func (qp *QueuePane) updateSizeInStore(titleID uint64, size string) {
 		tidVal, err := qp.store.GetValue(iter, 3)
 		if err == nil {
 			if tidStr, _ := tidVal.GetString(); tidStr == targetTidStr {
-				qp.store.SetValue(iter, 4, size)
+				qp.store.SetValue(iter, QUEUE_COL_SIZE, size)
 				break
 			}
 		}
@@ -420,6 +513,71 @@ func (qp *QueuePane) updateSizeInStore(titleID uint64, size string) {
 
 func (qp *QueuePane) SetTitleLoadingNoUpdate(titleID uint64) {
 	qp.titleSizes[titleID] = "loading..."
+}
+
+func (qp *QueuePane) SetSetVersionRequested(f func([]wiiudownloader.TitleEntry)) {
+	qp.setVersionRequested = f
+}
+
+func (qp *QueuePane) getSelectedEntries() []wiiudownloader.TitleEntry {
+	selection, err := qp.titleTreeView.GetSelection()
+	if err != nil {
+		return nil
+	}
+
+	model := qp.store.ToTreeModel()
+	var selectedTIDs []uint64
+
+	iter, ok := model.GetIterFirst()
+	if !ok {
+		return nil
+	}
+	for {
+		if selection.IterIsSelected(iter) {
+			tidVal, err := model.GetValue(iter, QUEUE_COL_TID)
+			if err == nil {
+				if tidStr, err := tidVal.GetString(); err == nil {
+					if tid, err := strconv.ParseUint(tidStr, TID_BASE_16, TID_BITS_64); err == nil {
+						selectedTIDs = append(selectedTIDs, tid)
+					}
+				}
+			}
+		}
+		if !model.IterNext(iter) {
+			break
+		}
+	}
+
+	if len(selectedTIDs) == 0 {
+		return nil
+	}
+
+	var entries []wiiudownloader.TitleEntry
+	qp.titleQueue.WithRLock(func(queue []wiiudownloader.TitleEntry) {
+		for _, t := range queue {
+			for _, tid := range selectedTIDs {
+				if t.TitleID == tid {
+					entries = append(entries, t)
+					break
+				}
+			}
+		}
+	})
+	return entries
+}
+
+func (qp *QueuePane) SetTitleVersion(titleID uint64, version int) {
+	qp.titleQueue.WithLock(func(queue *[]wiiudownloader.TitleEntry) {
+		for i := range *queue {
+			if (*queue)[i].TitleID == titleID {
+				(*queue)[i].Version = version
+				break
+			}
+		}
+	})
+	delete(qp.titleSizes, titleID)
+	delete(qp.titleBytes, titleID)
+	qp.Update(true)
 }
 
 func (qp *QueuePane) Update(doUpdateFunc bool) {
@@ -440,14 +598,20 @@ func (qp *QueuePane) Update(doUpdateFunc bool) {
 				sizeStr = ""
 			}
 
+			versionStr := "Default"
+			if title.Version > 0 {
+				versionStr = fmt.Sprintf("v%d", title.Version)
+			}
+
 			qp.store.Set(
 				iter,
-				[]int{0, 1, 2, 3, 4},
+				[]int{QUEUE_COL_NAME, QUEUE_COL_REGION, QUEUE_COL_KIND, QUEUE_COL_TID, QUEUE_COL_VERSION, QUEUE_COL_SIZE},
 				[]interface{}{
 					title.Name,
 					wiiudownloader.GetFormattedRegion(title.Region),
 					wiiudownloader.GetFormattedKind(title.TitleID),
 					fmt.Sprintf("%016x", title.TitleID),
+					versionStr,
 					sizeStr,
 				},
 			)

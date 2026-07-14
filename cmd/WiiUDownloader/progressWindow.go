@@ -14,6 +14,7 @@ type DownloadError struct {
 	Error     string
 	TidStr    string
 	ErrorType string
+	Version   int
 }
 
 const (
@@ -308,17 +309,7 @@ func (pw *ProgressWindow) SetStartTime(startTime time.Time) {
 	pw.startTime = startTime
 }
 
-func (pw *ProgressWindow) AddError(title, errorMsg, tidStr string) {
-	pw.errorsMutex.Lock()
-	defer pw.errorsMutex.Unlock()
-	pw.errors = append(pw.errors, DownloadError{
-		Title:  title,
-		Error:  errorMsg,
-		TidStr: tidStr,
-	})
-}
-
-func (pw *ProgressWindow) AddErrorWithType(title, errorMsg, tidStr, errorType string) {
+func (pw *ProgressWindow) AddErrorWithType(title, errorMsg, tidStr, errorType string, version int) {
 	pw.errorsMutex.Lock()
 	defer pw.errorsMutex.Unlock()
 	pw.errors = append(pw.errors, DownloadError{
@@ -326,6 +317,7 @@ func (pw *ProgressWindow) AddErrorWithType(title, errorMsg, tidStr, errorType st
 		Error:     errorMsg,
 		TidStr:    tidStr,
 		ErrorType: errorType,
+		Version:   version,
 	})
 }
 

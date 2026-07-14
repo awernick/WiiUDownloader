@@ -36,9 +36,12 @@ func formatBytes(bytes uint64) string {
 	return fmt.Sprintf("%.2f %s", value, units[unitIndex])
 }
 
-func fetchTMDSize(titleID uint64, client *http.Client) (uint64, error) {
+func fetchTMDSize(titleID uint64, version int, client *http.Client) (uint64, error) {
 	baseURL := fmt.Sprintf("http://ccs.cdn.c.shop.nintendowifi.net/ccs/download/%016x", titleID)
 	tmdURL := fmt.Sprintf("%s/tmd", baseURL)
+	if version > 0 {
+		tmdURL = fmt.Sprintf("%s/tmd.%d", baseURL, version)
+	}
 
 	resp, err := client.Get(tmdURL)
 	if err != nil {
@@ -317,6 +320,14 @@ func escapeMarkup(text string) string {
 	text = strings.ReplaceAll(text, ">", "&gt;")
 	text = strings.ReplaceAll(text, "\"", "&quot;")
 	return text
+}
+
+func queueDownloadIconName() string {
+	return "folder-download-symbolic"
+}
+
+func supportMeIconName() string {
+	return "starred-symbolic"
 }
 
 func detectErrorType(errorMsg string) string {
