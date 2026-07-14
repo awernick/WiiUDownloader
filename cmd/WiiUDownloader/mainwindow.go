@@ -906,7 +906,7 @@ func (mw *MainWindow) setupDonationBar() {
 		addStyleClass(button.GetStyleContext, "kofi-btn")
 
 		kofiIcon, _ := gtk.ImageNewFromIconName("starred-symbolic", gtk.ICON_SIZE_BUTTON)
-		kofiLabel, _ := gtk.LabelNew("Support Me")
+		kofiLabel, _ := gtk.LabelNew("Buy me a coffee")
 		kofiBtnBox, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 6)
 		kofiBtnBox.PackStart(kofiIcon, false, false, 0)
 		kofiBtnBox.PackStart(kofiLabel, false, false, 0)
@@ -934,7 +934,7 @@ func (mw *MainWindow) updateDonationBar(success bool) {
 	if mw.donationLabel == nil || mw.donationBar == nil {
 		return
 	}
-	text := "<span size='large'><span foreground='#00a2ed'><b>Free forever.</b></span> I'm building this solo, a <b>small donation</b> helps keep updates coming</span>"
+	text := "<span size='large'><span foreground='#00a2ed'><b>Free &amp; Open Source.</b></span> If this saves you time, <b>a coffee keeps updates coming!</b></span>"
 	if success {
 		text = "<span size='large'>This tool is free. <span foreground='#16a34a'>Your support keeps it that way.</span></span>"
 	}
@@ -1055,7 +1055,7 @@ func (mw *MainWindow) showSuccessDialog(count int, downloadPath string, decryptO
 		donationBox.SetMarginTop(6)
 
 		nudgeLabel, _ := gtk.LabelNew("")
-		nudgeLabel.SetMarkup("<span size='medium'><b>This tool is free.</b> Your Support Makes a Difference! Free, open-source, and built in free time. Did this save you time? A small tip keeps the lights on and ensures future maintenance!</span>")
+		nudgeLabel.SetMarkup("<span size='medium'><b>Downloads finished!</b> Did this tool save you time today? A small coffee keeps it free and maintained.</span>")
 		nudgeLabel.SetLineWrap(true)
 		nudgeLabel.SetLineWrapMode(pango.WRAP_WORD)
 		nudgeLabel.SetXAlign(0.5)
@@ -1067,7 +1067,7 @@ func (mw *MainWindow) showSuccessDialog(count int, downloadPath string, decryptO
 		kofiBtn.SetHAlign(gtk.ALIGN_CENTER)
 
 		kofiIcon, _ := gtk.ImageNewFromIconName("starred-symbolic", gtk.ICON_SIZE_BUTTON)
-		kofiLabel, _ := gtk.LabelNew("Donate")
+		kofiLabel, _ := gtk.LabelNew("Buy me a coffee")
 		kofiBtnBox, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 6)
 		kofiBtnBox.PackStart(kofiIcon, false, false, 0)
 		kofiBtnBox.PackStart(kofiLabel, false, false, 0)

@@ -215,12 +215,12 @@ func NewConfigWindow(config *Config) (*ConfigWindow, error) {
 	SetupCheckButtonAccessibility(darkModeCheck, "Enable dark theme for the interface")
 	interfaceGrid.Attach(darkModeCheck, 0, 0, 1, 1)
 
-	showDonationBarCheck, err := gtk.CheckButtonNewWithLabel("Show support nudge")
+	showDonationBarCheck, err := gtk.CheckButtonNewWithLabel("Show project support banners")
 	if err != nil {
 		return nil, err
 	}
 	showDonationBarCheck.SetActive(config.ShowDonationBar)
-	SetupCheckButtonAccessibility(showDonationBarCheck, "Show a small bar at the bottom to support the project")
+	SetupCheckButtonAccessibility(showDonationBarCheck, "Show a small banner at the bottom to support the project")
 	interfaceGrid.Attach(showDonationBarCheck, 0, 1, 1, 1)
 
 	getSizeOnQueueCheck, err := gtk.CheckButtonNewWithLabel("Fetch game size when adding to queue")

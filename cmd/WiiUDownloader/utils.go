@@ -205,7 +205,7 @@ func applyStyling() {
 	button.kofi-btn {
 		background-image: none;
 		background-color: #ff813f;
-		color: white;
+		color: #ffffff;
 		font-weight: bold;
 		border-radius: 8px;
 		padding: 6px 16px;
@@ -214,7 +214,7 @@ func applyStyling() {
 	}
 	button.kofi-btn:hover {
 		background-image: none;
-		background-color: shade(#ff813f, 1.15);
+		background-color: #ff9359;
 	}
 	.kofi-btn {
 		box-shadow: 0 1px 2px rgba(0,0,0,0.12);
